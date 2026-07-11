@@ -122,7 +122,7 @@ def extract_syllabus_with_ai(condensed_text, hours, intensity, no_weekends, star
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system", "content": "You are a structured data extraction engine. You must output a valid JSON object matching the requested schema keys ('tasks' and 'study_plan') exactly. Do not use abbreviated shorthand or single-character keys."},
+                {"role": "system", "content": "You are a structured database parser. Output valid JSON matching the exact explicit schema array keys. Maximize roadmap precision up to 120 unique cells."},
                 {"role": "user", "content": prompt}
             ],
             response_format={"type": "json_object"},
@@ -170,6 +170,7 @@ left_panel, right_panel = st.columns([1, 2], gap="large")
 with left_panel:
     st.markdown('<p class="main-title">Study Sync</p>', unsafe_allow_html=True)
     
+    # 🌓 NEW FEATURE: LIVE THEME CONTROLLER TOGGLE
     st.subheader("🎨 Customization Theme")
     current_mode = st.toggle("🌓 Light Theme Active", value=(st.session_state["theme"] == "Light"))
     new_mode = "Light" if current_mode else "Dark"
@@ -226,50 +227,16 @@ with right_panel:
             p_bar.progress(60)
             raw_ai = extract_syllabus_with_ai(condensed, study_hours, intensity, skip_weekends, s_from, s_until)
             
-            # --- ✨ CRITICAL INTERCEPTOR FOR SILENT ERRORS ---
-            if isinstance(raw_ai, dict) and "error_mode_active" in raw_ai:
-                p_bar.empty()
-                st.error(f"❌ Groq API Gateway Error: {raw_ai['details']}")
-                st.stop()
-                
             p_bar.progress(90)
+            raw_tasks = raw_ai.get("tasks", []) if isinstance(raw_ai, dict) else []
+            mapped_tasks = [{"task_name": i.get("task_name", "Milestone"), "due_date": i.get("due_date", "2026-06-15")} for i in raw_tasks if isinstance(i, dict)]
             
-            # Polymorphic Fallback Extraction Core
-            raw_tasks = []
-            if isinstance(raw_ai, dict):
-                for k in ["tasks", "tasks_list", "t", "task"]:
-                    if k in raw_ai and isinstance(raw_ai[k], list):
-                        raw_tasks = raw_ai[k]
-                        break
-                        
-            mapped_tasks = []
-            for i in raw_tasks:
-                if isinstance(i, dict):
-                    mapped_tasks.append({
-                        "task_name": i.get("task_name", i.get("n", i.get("task", "Milestone"))),
-                        "due_date": i.get("due_date", i.get("d", "2026-06-15"))
-                    })
-                elif isinstance(i, str):
-                    mapped_tasks.append({"task_name": i, "due_date": "2026-06-15"})
-            
-            raw_plan = []
-            if isinstance(raw_ai, dict):
-                for k in ["study_plan", "studyPlan", "plan", "s", "p"]:
-                    if k in raw_ai and isinstance(raw_ai[k], list):
-                        raw_plan = raw_ai[k]
-                        break
-                        
-            mapped_plan = []
-            for i in raw_plan:
-                if isinstance(i, dict):
-                    mapped_plan.append({
-                        "Status": False,
-                        "Scheduled Date": i.get("scheduled_date", i.get("d", i.get("date", "2026-06-15"))),
-                        "Time Slot": i.get("time_slot", i.get("t", f"{s_from} - {s_until}")),
-                        "Focus Topic": i.get("focus_topic", i.get("f", "Concept Review")),
-                        "Suggested Action": i.get("suggested_action", i.get("a", "Practice items")),
-                        "Hours Allocated": int(i.get("hours_allocated", i.get("h", study_hours)))
-                    })
+            raw_plan = raw_ai.get("study_plan", []) if isinstance(raw_ai, dict) else []
+            mapped_plan = [{
+                "Status": False, "Scheduled Date": i.get("scheduled_date", "2026-06-15"),
+                "Time Slot": i.get("time_slot", f"{s_from} - {s_until}"), "Focus Topic": i.get("focus_topic", "Concept Review"),
+                "Suggested Action": i.get("suggested_action", "Practice items"), "Hours Allocated": int(i.get("hours_allocated", study_hours))
+            } for i in raw_plan if isinstance(i, dict)]
             
             st.session_state["ai_data"] = {"tasks": mapped_tasks, "study_plan": mapped_plan}
             save_schedule_to_firebase(user_id, mapped_tasks, mapped_plan)
