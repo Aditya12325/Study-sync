@@ -52,6 +52,11 @@ else:
 def init_firebase():
     if not firebase_admin._apps:
         fb_credentials = dict(st.secrets["FIREBASE_SECRET"])
+        
+        # ✨ THE CRITICAL STRING PATCH: Auto-corrects escaped backslash sequences instantly
+        if "private_key" in fb_credentials:
+            fb_credentials["private_key"] = fb_credentials["private_key"].replace("\\n", "\n")
+            
         cred = credentials.Certificate(fb_credentials)
         firebase_admin.initialize_app(cred)
     return firestore.client()
@@ -226,7 +231,6 @@ with right_panel:
             p_bar.progress(60)
             raw_ai = extract_syllabus_with_ai(condensed, study_hours, intensity, skip_weekends, s_from, s_until)
             
-            # --- ✨ CRITICAL INTERCEPTOR FOR SILENT ERRORS ---
             if isinstance(raw_ai, dict) and "error_mode_active" in raw_ai:
                 p_bar.empty()
                 st.error(f"❌ Groq API Gateway Error: {raw_ai['details']}")
@@ -234,7 +238,6 @@ with right_panel:
                 
             p_bar.progress(90)
             
-            # Polymorphic Fallback Extraction Core
             raw_tasks = []
             if isinstance(raw_ai, dict):
                 for k in ["tasks", "tasks_list", "t", "task"]:
